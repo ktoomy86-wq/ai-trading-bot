@@ -102,6 +102,23 @@ st.markdown(f"""
         font-size: 0.9rem;
         color: #a0a0a0;
     }}
+
+    /* Responsive Design for Mobile (iPhone/iPad) */
+    @media (max-width: 768px) {{
+        .main-title {{
+            font-size: 1.8rem !important;
+            margin-bottom: 20px;
+        }}
+        .metric-value {{
+            font-size: 1.2rem;
+        }}
+        .decision-box {{
+            padding: 15px;
+        }}
+        .stButton>button {{
+            font-size: 1rem;
+        }}
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -149,8 +166,8 @@ def render_tradingview_chart(symbol, timeframe, lang_code):
     
     html_code = f"""
     <!-- TradingView Widget BEGIN -->
-    <div class="tradingview-widget-container" style="height:600px;width:100%">
-      <div id="tradingview_12345" style="height:600px;width:100%"></div>
+    <div class="tradingview-widget-container" style="height:500px;width:100%">
+      <div id="tradingview_12345" style="height:500px;width:100%"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
       <script type="text/javascript">
       new TradingView.widget(
@@ -183,7 +200,7 @@ def render_tradingview_chart(symbol, timeframe, lang_code):
     <!-- TradingView Widget END -->
     """
     
-    components.html(html_code, height=650, width=None)
+    components.html(html_code, height=520, width=None)
 
 
 # --- 1. Fetch Live Market Data First ---
