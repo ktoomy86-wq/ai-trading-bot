@@ -1,0 +1,11 @@
+MetaTrader5
+pandas
+google-generativeai
+python-dotenv
+requests
+yfinance
+streamlit
+beautifulsoup4
+lxml
+plotly
+firebase-admin
