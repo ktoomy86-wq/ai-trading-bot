@@ -170,44 +170,44 @@ st.markdown(f"""
     }}
 
     /* --- Responsive Mobile & Tablet Design --- */
-    @media (max-width: 768px) {
-        .main-title {
+    @media (max-width: 768px) {{
+        .main-title {{
             font-size: 2rem !important;
             margin-bottom: 15px !important;
-        }
-        .custom-card {
+        }}
+        .custom-card {{
             padding: 10px !important;
-        }
-        .custom-card h1 {
+        }}
+        .custom-card h1 {{
             font-size: 2rem !important;
-        }
-        .custom-card h3 {
+        }}
+        .custom-card h3 {{
             font-size: 1.4rem !important;
-        }
-        .custom-card p {
+        }}
+        .custom-card p {{
             font-size: 0.9rem !important;
             line-height: 1.4 !important;
-        }
-        .metric-value {
+        }}
+        .metric-value {{
             font-size: 1.4rem !important;
-        }
-        .metric-label {
+        }}
+        .metric-label {{
             font-size: 0.8rem !important;
-        }
+        }}
         /* Make TradingView iframe fit better on mobile */
-        .tradingview-widget-container {
+        .tradingview-widget-container {{
             height: 400px !important;
-        }
-    }
+        }}
+    }}
     
-    @media (max-width: 480px) {
-        .main-title {
+    @media (max-width: 480px) {{
+        .main-title {{
             font-size: 1.5rem !important;
-        }
-        .custom-card h1 {
+        }}
+        .custom-card h1 {{
             font-size: 1.8rem !important;
-        }
-    }
+        }}
+    }}
     </style>
 
 """, unsafe_allow_html=True)
