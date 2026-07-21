@@ -16,53 +16,117 @@ def clean_json(text: str) -> str:
         return text[start:end+1]
     return text
 
-def get_omni_system_prompt(symbol, lang="ar"):
+def get_omni_system_prompt(symbol, lang="ar", supports=[], resistances=[], chat_context=""): 
     lang_instruction = "Arabic language" if lang == "ar" else "English language"
-    return f"""You are the complete {symbol} AI Trading Ecosystem, consisting of 4 virtual sub-agents:
-1. Technical Agent: Analyzes MT5 H4 and H1 data (Support/Resistance, BOS/CHOCH, momentum, trend, entry, SL).
-2. Macro Agent: Analyzes fundamental economic data and news for the currencies in {symbol} and DXY.
-3. Risk Agent: Validates the trade. Max risk is 1% of account balance. Max SL distance is 1.5x daily ATR. Calculates Lot Size and TP1, TP2, TP3 based on 1:1, 1:2, 1:3 RR.
-4. Chief Strategist: Synthesizes everything into a final Action (BUY/SELL/HOLD).
+    return f"""You are the complete {symbol} AI Trading Ecosystem, composed of specialized micro-agents:
+1. MTF Agent (Multi-Timeframe): Analyzes Daily and 4H macro-trend to restrict 1H trades against the trend.
+2. Volume & Liquidity Agent: Reads volume profile to detect Smart Money Concepts, fakeouts, and liquidity sweeps.
+3. Pattern Recognition Agent: Detects classic patterns (Head & Shoulders, Double Tops/Bottoms, Wedges) and harmonic patterns.
+4. Sentiment & Breaking News Agent: Assesses market sentiment and breaking news impact (e.g. from X or major news outlets) on {symbol}.
+5. Risk Agent: Calculates Stop Loss dynamically using Daily ATR * 1.5. Dynamically calculate and adjust the Lot Size so that total risk NEVER exceeds 1% of Account Balance. DO NOT REJECT the trade for exceeding risk; instead, reduce the Lot Size. Sets TP1 (1:1), TP2 (1:2), TP3 (1:3). Only reject if the required lot size is less than 0.01.
+6. Execution Agent: Formats the final trade order for programmatic execution.
+7. Chief Strategist: Synthesizes everything into a final Action (BUY/SELL/HOLD).
 
-You must output a SINGLE JSON object containing all 4 reports precisely in this format.
+Here is the algorithmic analysis of support and resistance on the chart for {symbol}:
+- Supports: {supports}
+- Resistances: {resistances}
+Incorporate these levels when deciding stop loss, take profit, and smart money zones.
+
+User's Custom Instructions & Capital (from Chat History):
+{chat_context}
+(Use this to strictly adjust the Account Balance and strategy if the user requested it).
+
+You must output a SINGLE JSON object containing all 7 reports precisely in this format.
 IMPORTANT: All string values, explanations, summaries, and reasons inside the JSON MUST be written in the {lang_instruction}.
+If the language is Arabic, translate terms like BULLISH to "صاعد", BEARISH to "هابط", NEUTRAL to "عرضي", APPROVED to "مقبول", REJECTED to "مرفوض", and translate pattern names like "Double Top" to "قمة مزدوجة".
 
 {{
-  "technical_agent": {{
-    "support_resistance_zones": ["zone 1...", "zone 2..."],
-    "support_resistance_levels": [0.0, 0.0, 0.0],
-    "structural_shifts": "...",
-    "momentum": "...",
-    "current_trend": "...",
-    "suggested_entry_price": 0.0,
-    "suggested_stop_loss": 0.0,
-    "technical_confidence_score": 80
+  "mtf_agent": {{
+    "daily_trend": "BULLISH / BEARISH / NEUTRAL (Translated to {lang_instruction})",
+    "h4_trend": "BULLISH / BEARISH / NEUTRAL (Translated)",
+    "trend_strength": 8,
+    "permission_to_trade": true
   }},
-  "macro_agent": {{
-    "fundamental_bias": "Bullish",
-    "macro_factors_summary": "...",
-    "impact_severity_score": "High",
-    "usd_sentiment": "Hawkish"
+  "volume_liquidity_agent": {{
+    "liquidity_score": 7,
+    "smart_money_zones": ["Price level 1", "Price level 2"],
+    "fakeout_detected": false
+  }},
+  "pattern_recognition_agent": {{
+    "detected_patterns": ["Pattern Name (Translated)"],
+    "pattern_confidence": 85
+  }},
+  "sentiment_agent": {{
+    "overall_sentiment": "BULLISH / BEARISH / NEUTRAL (Translated)",
+    "sentiment_score": 6,
+    "breaking_news_alert": "None / Alert details...",
+    "market_fear_greed": 65
   }},
   "risk_agent": {{
-    "status": "APPROVED",
+    "status": "APPROVED / REJECTED",
     "reason": "...",
-    "lot_size": 0.0,
     "sl_price": 0.0,
     "tp1": 0.0,
     "tp2": 0.0,
     "tp3": 0.0
   }},
+  "execution_agent": {{
+    "action": "BUY / SELL / HOLD",
+    "symbol": "{symbol}",
+    "lot_size": 0.0,
+    "entry_price": 0.0,
+    "sl": 0.0,
+    "tp": 0.0
+  }},
   "strategist_agent": {{
-    "Action": "BUY",
-    "Entry_Price": 0.0,
+    "Action": "BUY / SELL / HOLD",
     "Confidence_Score": 85,
+    "Chain_of_Thought": "...",
     "Execution_Summary": "..."
   }}
 }}
 """
 
-def get_omni_analysis(symbol: str, h4_data: str, h1_data: str, macro_data: str, balance: float, atr: float, lang="ar"):
+def chat_with_omni_ai(messages, context, lang="ar"):
+    api_key = os.getenv("GITHUB_TOKEN")
+    if not api_key:
+        return "⚠️ رمز GitHub (GITHUB_TOKEN) غير موجود. يرجى إضافته في القائمة الجانبية للدردشة مع المستشار." if lang == "ar" else "⚠️ GitHub Token is missing."
+
+    system_persona = f"""You are the 'OmniTrade AI Smart Advisor' (المستشار الذكي), an elite trading strategist and market analyst. You are a genius trader with deep market knowledge. 
+Your goal is to answer the user's questions about the market, trading strategies, or the AI's recent decisions.
+Here is the LATEST AI ecosystem analysis report (JSON format) and market context. Use it to inform your answers if the user asks about the current setup:
+{context}
+
+Respond entirely in {'Arabic' if lang == 'ar' else 'English'}. Be confident, professional, and analytical. Use formatting (bolding, lists) to make your response easy to read.
+CRITICAL RULE: DO NOT use LaTeX math formatting (like \\frac or \\text) or brackets for math. Write numbers and equations clearly and plainly. ALWAYS round all numbers, lots, and prices to a maximum of 2 decimal places (e.g., 4000.50 instead of 4053.3999)."""
+
+    # Format messages for the API (only keeping system and previous user/assistant)
+    formatted_messages = [{"role": "system", "content": system_persona}]
+    for msg in messages[-10:]: # keep last 10 messages for context
+        formatted_messages.append({"role": msg["role"], "content": msg["content"]})
+
+    url = "https://models.inference.ai.azure.com/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": "gpt-4o", # use gpt-4o for smart chat
+        "messages": formatted_messages,
+        "temperature": 0.7
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        if response.status_code == 200:
+            return response.json()['choices'][0]['message']['content']
+        else:
+            return f"عذراً، حدث خطأ في الاتصال بالذكاء الاصطناعي: {response.status_code}" if lang == "ar" else f"Error: {response.status_code}"
+    except Exception as e:
+        return f"حدث خطأ: {str(e)}" if lang == "ar" else f"Error: {str(e)}"
+
+def get_omni_analysis(symbol: str, h4_data: str, h1_data: str, tech_summary: str, macro_data: str, balance: float, atr: float, lang="ar", supports=[], resistances=[], chat_context=""): 
     """
     Sends all data in one payload to get the entire ecosystem analysis instantly using GitHub Models.
     """
@@ -80,6 +144,9 @@ Please perform a complete ecosystem analysis for {symbol}.
 
 [H1 Timeframe Data]
 {h1_data}
+
+[Technical Indicators Summary]
+{tech_summary}
 
 [Fundamental Macro Data]
 {macro_data}
@@ -102,7 +169,7 @@ Provide your analysis in the strict unified JSON format requested.
     payload = {
         "model": "gpt-4o-mini",
         "messages": [
-            {"role": "system", "content": get_omni_system_prompt(symbol, lang)},
+            {"role": "system", "content": get_omni_system_prompt(symbol, lang, supports, resistances, chat_context)},
             {"role": "user", "content": user_prompt}
         ],
         "temperature": 0.2
