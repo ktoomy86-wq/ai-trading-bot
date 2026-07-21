@@ -1,4 +1,4 @@
-MetaTrader5
+
 pandas
 google-generativeai
 python-dotenv
