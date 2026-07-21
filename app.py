@@ -22,7 +22,7 @@ import firebase_manager
 firebase_manager.init_firebase()
 
 # Setup page config
-st.set_page_config(page_title="AI Trading Ecosystem", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="AI Trading Ecosystem", page_icon="🤖", layout="wide", initial_sidebar_state="collapsed")
 
 # Handle Language Selection
 lang_choice = st.sidebar.selectbox("🌐 لغة العرض (Language)", ["العربية (Arabic)", "English"])
