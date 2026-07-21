@@ -94,3 +94,35 @@ def get_trade_history(limit=50):
     except Exception as e:
         logger.error(f"Error retrieving history from Firestore: {e}")
         return []
+
+
+def send_trade_signal(symbol, action, lot_size, entry_price, sl, tp, mt5_login="", mt5_password="", mt5_server=""):
+    """
+    Sends an actionable trade signal to Firestore for the local MT5 executor bot.
+    """
+    db = init_firebase()
+    if not db:
+        return False, "Firebase is not initialized."
+        
+    try:
+        doc_ref = db.collection("mt5_signals").document()
+        data = {
+            "symbol": symbol,
+            "action": action,
+            "lot_size": lot_size,
+            "entry_price": entry_price,
+            "sl": sl,
+            "tp": tp,
+            "status": "PENDING",
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+        if mt5_login and mt5_password:
+            data["mt5_login"] = mt5_login
+            data["mt5_password"] = mt5_password
+            data["mt5_server"] = mt5_server
+        doc_ref.set(data)
+        logger.info(f"Signal sent to Firebase: {action} {symbol}")
+        return True, "Signal sent successfully."
+    except Exception as e:
+        logger.error(f"Error sending signal: {e}")
+        return False, f"Error sending signal: {e}"
