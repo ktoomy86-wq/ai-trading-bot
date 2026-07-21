@@ -24,7 +24,7 @@ def get_omni_system_prompt(symbol, lang="ar", supports=[], resistances=[], chat_
 3. Pattern Recognition Agent: Detects classic patterns (Head & Shoulders, Double Tops/Bottoms, Wedges) and harmonic patterns.
 4. Sentiment & Breaking News Agent: Assesses market sentiment and breaking news impact (e.g. from X or major news outlets) on {symbol}.
 5. Risk Agent: Calculates Stop Loss dynamically using Daily ATR * 1.5. Dynamically calculate and adjust the Lot Size so that total risk NEVER exceeds 1% of Account Balance. DO NOT REJECT the trade for exceeding risk; instead, reduce the Lot Size. Sets TP1 (1:1), TP2 (1:2), TP3 (1:3). Only reject if the required lot size is less than 0.01.
-6. Execution Agent: Formats the final trade order for programmatic execution.
+6. Execution Agent: Formats the final trade order for programmatic execution. CRITICAL: Ensure `tp` and `sl` are logically placed based on the Action. For BUY, TP MUST be greater than Entry, and SL MUST be less than Entry. For SELL, TP MUST be less than Entry, and SL MUST be greater than Entry.
 7. Chief Strategist: Synthesizes everything into a final Action (BUY/SELL/HOLD).
 
 Here is the algorithmic analysis of support and resistance on the chart for {symbol}:

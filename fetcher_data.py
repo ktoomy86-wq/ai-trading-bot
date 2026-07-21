@@ -3,6 +3,12 @@ import pandas as pd
 import logging
 import os
 from dotenv import load_dotenv
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    mt5 = None
+    MT5_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -36,6 +42,9 @@ def get_historical_data(symbol, timeframe, num_candles=100, **kwargs):
     elif timeframe == '1wk':
         interval = '1wk'
         period = '5y'
+    elif timeframe == '1mo':
+        interval = '1mo'
+        period = '10y'
     else:
         # Fallbacks for older requests like H1, H4
         if timeframe == 'H1':
@@ -87,6 +96,11 @@ def get_historical_data(symbol, timeframe, num_candles=100, **kwargs):
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         df['ATRr_14'] = true_range.rolling(14).mean()
         
+        if 'volume' in df.columns:
+            df['Volume_MA_20'] = df['volume'].rolling(20).mean()
+        else:
+            df['Volume_MA_20'] = 0.0
+        
         df.dropna(inplace=True)
         
         # Keep only the latest num_candles
@@ -135,6 +149,89 @@ def get_daily_atr(symbol, **kwargs):
 
 def execute_mt5_trade(action, symbol, lot=0.01, sl=None, tp=None, **kwargs):
     """
-    Mock trade execution since MT5 is removed.
+    Executes a market order on MetaTrader 5.
     """
-    return True, f"Mock Order successfully placed! Action: {action}, Symbol: {symbol}, Lot: {lot}"
+    if not mt5.initialize():
+        logger.error(f"MT5 initialize() failed, error code: {mt5.last_error()}")
+        return False, f"MT5 initialization failed. Error: {mt5.last_error()}"
+
+    action = action.upper()
+    if action not in ["BUY", "SELL"]:
+        return False, f"Invalid action: {action}"
+
+    order_type = mt5.ORDER_TYPE_BUY if action == "BUY" else mt5.ORDER_TYPE_SELL
+    
+    symbol_info = mt5.symbol_info(symbol)
+    if symbol_info is None:
+        logger.error(f"{symbol} not found in MT5")
+        return False, f"{symbol} not found in MT5"
+        
+    if not symbol_info.visible:
+        if not mt5.symbol_select(symbol, True):
+            return False, f"Failed to select {symbol}"
+
+    point = symbol_info.point
+    price = mt5.symbol_info_tick(symbol).ask if action == "BUY" else mt5.symbol_info_tick(symbol).bid
+
+    request = {
+        "action": mt5.TRADE_ACTION_DEAL,
+        "symbol": symbol,
+        "volume": float(lot),
+        "type": order_type,
+        "price": price,
+        "deviation": 20,
+        "magic": 234000,
+        "comment": "AI Trading Bot",
+        "type_time": mt5.ORDER_TIME_GTC,
+        "type_filling": mt5.ORDER_FILLING_IOC,
+    }
+
+    if sl is not None and sl > 0:
+        request["sl"] = float(sl)
+    if tp is not None and tp > 0:
+        request["tp"] = float(tp)
+
+    result = mt5.order_send(request)
+    
+    if result.retcode != mt5.TRADE_RETCODE_DONE:
+        logger.error(f"Order send failed, retcode: {result.retcode}")
+        return False, f"Order failed. Error code: {result.retcode}"
+
+    return True, f"Order {result.order} successfully placed! Action: {action}, Symbol: {symbol}, Lot: {lot}, Price: {price}, SL: {sl}, TP: {tp}"
+
+
+def get_support_resistance(df, prominence=0.01, distance=5):
+    """
+    Finds Support and Resistance levels using pure pandas/python.
+    Returns a list of resistance levels and support levels.
+    """
+    if df is None or df.empty:
+        return [], []
+        
+    prices = df['close'].values.tolist()
+    
+    resistances = []
+    supports = []
+    n = len(prices)
+    
+    for i in range(distance, n - distance):
+        is_peak = True
+        is_trough = True
+        for j in range(i - distance, i + distance + 1):
+            if i != j:
+                if prices[i] <= prices[j]:
+                    is_peak = False
+                if prices[i] >= prices[j]:
+                    is_trough = False
+                    
+        if is_peak:
+            # Check prominence (naive check: just needs to be X% higher than adjacent local minima)
+            resistances.append(prices[i])
+        elif is_trough:
+            supports.append(prices[i])
+            
+    # Filter close levels (naively just return unique sorted)
+    resistances = sorted(list(set(resistances)))
+    supports = sorted(list(set(supports)))
+    
+    return supports, resistances
