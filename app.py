@@ -168,7 +168,48 @@ st.markdown(f"""
         pointer-events: none;
         user-select: none;
     }}
-</style>
+
+    /* --- Responsive Mobile & Tablet Design --- */
+    @media (max-width: 768px) {
+        .main-title {
+            font-size: 2rem !important;
+            margin-bottom: 15px !important;
+        }
+        .custom-card {
+            padding: 10px !important;
+        }
+        .custom-card h1 {
+            font-size: 2rem !important;
+        }
+        .custom-card h3 {
+            font-size: 1.4rem !important;
+        }
+        .custom-card p {
+            font-size: 0.9rem !important;
+            line-height: 1.4 !important;
+        }
+        .metric-value {
+            font-size: 1.4rem !important;
+        }
+        .metric-label {
+            font-size: 0.8rem !important;
+        }
+        /* Make TradingView iframe fit better on mobile */
+        .tradingview-widget-container {
+            height: 400px !important;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .main-title {
+            font-size: 1.5rem !important;
+        }
+        .custom-card h1 {
+            font-size: 1.8rem !important;
+        }
+    }
+    </style>
+
 """, unsafe_allow_html=True)
 
 col_logo1, col_logo2, col_logo3 = st.columns([1, 2.5, 1])
