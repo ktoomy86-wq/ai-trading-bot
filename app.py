@@ -9,6 +9,16 @@ import importlib
 import time
 import importlib
 import translations as tr_module
+import datetime
+
+import sys
+import subprocess
+try:
+    import pandas as pd
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pandas"])
+    import pandas as pd
+
 importlib.reload(tr_module)
 translations = tr_module.translations
 
@@ -18,12 +28,53 @@ from fetcher_data import get_historical_data, get_account_balance, get_daily_atr
 from macro_fetcher import fetch_all_macro_data
 import agent
 importlib.reload(agent)
+
+if 'trade_log' not in st.session_state:
+    st.session_state.trade_log = []
+
+def execute_mock_trade(symbol, action, entry_price, sl, tp, volume):
+    trade = {
+        "الوقت": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "الأصل": symbol,
+        "النوع": action,
+        "الدخول": round(entry_price, 4),
+        "وقف الخسارة (SL)": round(sl, 4),
+        "الهدف (TP)": round(tp, 4),
+        "الحجم": volume,
+        "الحالة": "مفتوحة 🟢",
+        "الربح/الخسارة الوهمي": 0.00
+    }
+    st.session_state.trade_log.insert(0, trade) # Insert at top
 from agent import get_omni_analysis
 import firebase_manager
 firebase_manager.init_firebase()
 
 # Setup page config
 st.set_page_config(page_title="AI Trading Ecosystem", page_icon="🤖", layout="wide", initial_sidebar_state="collapsed")
+
+
+# منطقة مخصصة للتنبيهات أعلى الصفحة
+alert_placeholder = st.empty()
+
+# تهيئة سجل الصفقات في التطبيق
+if 'trade_log' not in st.session_state:
+    st.session_state.trade_log = []
+
+# دالة لتنفيذ صفقة وهمية
+def execute_mock_trade(symbol, action, entry_price, sl, tp, volume):
+    trade = {
+        "الوقت": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "الأصل": symbol,
+        "النوع": action,
+        "الدخول": entry_price,
+        "وقف الخسارة (SL)": sl,
+        "الهدف (TP)": tp,
+        "الحجم": volume,
+        "الحالة": "مفتوحة 🟢",
+        "الربح/الخسارة الوهمي": 0.00
+    }
+    st.session_state.trade_log.append(trade)
+    st.success("✅ تم تسجيل الصفقة الوهمية بنجاح!")
 
 # Handle Language Selection
 lang_choice = st.sidebar.selectbox("🌐 لغة العرض (Language)", ["العربية (Arabic)", "English"])
@@ -231,15 +282,12 @@ with st.sidebar:
     st.header(t["timeframe_select"])
     selected_timeframe = st.selectbox("", ["15m", "1h", "1d", "1wk", "1mo"], index=1, label_visibility="collapsed")
     
-    st.header(t["config_header"])
-    api_key = st.text_input(t["github_token"], type="password", value=os.getenv("GITHUB_TOKEN", ""))
-    tg_token = st.text_input(t.get("telegram_token", "Telegram Token"), type="password", value=os.getenv("TG_TOKEN", ""))
-    tg_chat = st.text_input(t.get("chat_id", "Chat ID"), value=os.getenv("TG_CHAT", ""))
+
     
     
     st.markdown("---")
-    st.header("تحديث تلقائي (Auto-Refresh)")
-    st.session_state.auto_update = st.toggle("تفعيل الذكاء الاصطناعي كل 5 دقائق" if lang_code == "ar" else "Run AI every 5 mins", value=False)
+    st.subheader(t.get("auto_refresh", "Auto-Refresh"))
+    st.session_state.auto_update = st.toggle("تفعيل الذكاء الاصطناعي كل 30 ثانية" if lang_code == "ar" else "Run AI every 30 secs", value=False)
     
     if st.session_state.auto_update:
         import streamlit.components.v1 as components
@@ -254,19 +302,12 @@ with st.sidebar:
             height=0,
             width=0,
         )
-    st.markdown("---")
-    st.session_state.auto_mt5_trading = st.checkbox(t.get("auto_mt5", "🤖 تفعيل التداول الآلي (MT5 Auto-Trading)") if lang_code == "ar" else "🤖 Enable MT5 Auto-Trading", value=st.session_state.get("auto_mt5_trading", False))
-    if st.session_state.auto_mt5_trading:
-        with st.expander("بيانات حساب MT5"):
-            st.session_state.mt5_login = st.text_input("Login (رقم الحساب)", value=st.session_state.get("mt5_login", ""))
-            st.session_state.mt5_password = st.text_input("Password (الباسورد)", type="password", value=st.session_state.get("mt5_password", ""))
-            st.session_state.mt5_server = st.text_input("Server (اسم السيرفر)", value=st.session_state.get("mt5_server", ""))
+
     st.markdown(t["system_status"])
     st.success(t["ready"])
     
     st.markdown("---")
-    
-    
+
 import requests
 
 import streamlit.components.v1 as components
@@ -348,24 +389,29 @@ if True:
 
     st.markdown("---")
 
+    # عرض السجل في واجهة التطبيق
+    if st.session_state.trade_log:
+        st.markdown("<h3 style='text-align: center;'>📝 سجل الصفقات الوهمية (Mock Trades)</h3>", unsafe_allow_html=True)
+        df_trades = pd.DataFrame(st.session_state.trade_log)
+        st.dataframe(df_trades, use_container_width=True)
+
     # --- 3. AI Analysis Trigger ---
     import time
     current_time = time.time()
     last_ai_time = st.session_state.get("last_ai_time", 0)
     
     run_ai = st.button(t["ai_update_btn"], use_container_width=True, type="primary")
-    
+
+
     if st.session_state.get("auto_update", False):
-        if current_time - last_ai_time > 290:  # ~5 minutes
+        if current_time - last_ai_time > 30:  # 30 seconds
             run_ai = True
             
     if run_ai:
         st.session_state.last_ai_time = current_time
-        if not api_key:
+        if not os.getenv("GROQ_API_KEY"):
             st.error(t["missing_token"])
             st.stop()
-
-        os.environ["GITHUB_TOKEN"] = api_key
 
         with st.spinner(t["processing_ai"]):
             df_secondary = get_historical_data(selected_symbol, '1d')
@@ -374,10 +420,10 @@ if True:
             account_balance = get_account_balance()
             daily_atr = get_daily_atr(selected_symbol)
 
-            df_sec_slim = df_secondary.tail(50).round(4) if df_secondary is not None else None
-            df_pri_slim = df_primary.tail(50).round(4)
+            df_sec_slim = df_secondary.tail(15).round(4) if df_secondary is not None else None
+            df_pri_slim = df_primary.tail(15).round(4) if df_primary is not None else None
 
-            if df_sec_slim is not None:
+            if df_sec_slim is not None and df_pri_slim is not None:
                 latest_row = df_pri_slim.iloc[-1]
                 price = latest_row.get('close', 0.0)
                 rsi = latest_row.get('RSI_14', 0.0)
@@ -387,48 +433,38 @@ if True:
                 vol_ma = latest_row.get('Volume_MA_20', 0.0)
                 tech_summary = f"Current Price: {price:.4f}\\nRSI (14): {rsi:.2f}\\nMACD: {macd:.4f} (Signal: {macd_signal:.4f})\\nVolume: {vol} (20MA: {vol_ma})"
 
+                h4_csv = df_sec_slim.to_csv(index=False)
+                h1_csv = df_pri_slim.to_csv(index=False)
+
                 chat_context = ""
                 if "chat_messages" in st.session_state:
                     chat_context = "\n".join([m['role'] + ": " + m['content'] for m in st.session_state.chat_messages if m['role'] == 'user'])
-                new_omni_json, err_msg = get_omni_analysis(selected_symbol, df_sec_slim.to_csv(index=False), df_pri_slim.to_csv(index=False), tech_summary, macro_data, account_balance, daily_atr, lang_code, supports=supports, resistances=resistances, chat_context=chat_context)
+                new_omni_json, err_msg = get_omni_analysis(selected_symbol, h4_csv, h1_csv, tech_summary, macro_data, account_balance, daily_atr, lang_code, supports=supports, resistances=resistances, chat_context=chat_context)
 
                 if new_omni_json is None:
                     st.error(t["analysis_fail"].format(err=err_msg))
                 else:
                     st.session_state.omni_json = new_omni_json
+                    st.session_state.animate_swarm = True
                     firebase_manager.save_trade_analysis(selected_symbol, selected_timeframe, new_omni_json)
                     
-                    # Check for Telegram Webhook
-                    strat_data = new_omni_json.get("strategist_agent", {})
-                    conf_score = strat_data.get("Confidence_Score", 0)
-                    action = strat_data.get("Action", "HOLD")
-                    
-                    if action in ["BUY", "SELL"] and conf_score > 80 and tg_token and tg_chat:
-                        try:
-                            exec_data = new_omni_json.get("execution_agent", {})
-                            msg = f"🚨 AI Trading Alert: {action} {selected_symbol}\\nConfidence: {conf_score}%\\nEntry: {exec_data.get('entry_price')}\\nSL: {exec_data.get('sl')}"
-                            requests.post(f"https://api.telegram.org/bot{tg_token}/sendMessage", json={"chat_id": tg_chat, "text": msg})
-                        except Exception as e:
-                            logger.error(f"Telegram webhook failed: {e}")
-                            
-                    
+
                     # MT5 Auto Trading Signal
-                    if st.session_state.get("auto_mt5_trading", False) and action in ["BUY", "SELL"] and conf_score > 80:
-                        try:
-                            exec_data = new_omni_json.get("execution_agent", {})
-                            firebase_manager.send_trade_signal(
-                                symbol=selected_symbol,
-                                action=action,
-                                lot_size=exec_data.get('lot_size', 0.01),
-                                entry_price=exec_data.get('entry_price', 0),
-                                sl=exec_data.get('sl', 0),
-                                tp=exec_data.get('tp', 0),
-                                mt5_login=st.session_state.get('mt5_login', ''),
-                                mt5_password=st.session_state.get('mt5_password', ''),
-                                mt5_server=st.session_state.get('mt5_server', '')
-                            )
-                        except Exception as e:
-                            print(f"Failed to send MT5 signal: {e}")
+                    strat_data = new_omni_json.get("strategist_agent", {})
+                    action = strat_data.get("Action", "HOLD").upper()
+                    
+                    if action in ["BUY", "SELL"]:
+                        exec_data = new_omni_json.get("execution_agent", {})
+                        lot_size = exec_data.get('lot_size', 0.01)
+                        entry_price = exec_data.get('entry_price', price)
+                        sl = exec_data.get('sl', 0)
+                        tp = exec_data.get('tp', 0)
+                        
+                        alert_placeholder.warning(f"🚨 تنبيه استراتيجية: توجد فرصة {action} قوية على {selected_symbol} الآن!")
+                        st.toast(f'الذكاء الاصطناعي رصد فرصة {action} {selected_symbol}', icon='🤖')
+                        execute_mock_trade(selected_symbol, action, entry_price, sl, tp, lot_size)
+                        
+
                             
                     st.rerun()
             else:
@@ -437,8 +473,8 @@ if True:
     # --- 4. Display AI Analysis ---
     if omni_json:
         mtf_json = omni_json.get("mtf_agent", {})
-        vol_json = omni_json.get("volume_liquidity_agent", {})
-        pat_json = omni_json.get("pattern_recognition_agent", {})
+        vol_json = omni_json.get("volume_agent", {})
+        pat_json = omni_json.get("pattern_agent", {})
         sent_json = omni_json.get("sentiment_agent", {})
         risk_json = omni_json.get("risk_agent", {})
         exec_json = omni_json.get("execution_agent", {})
@@ -450,7 +486,7 @@ if True:
             color = "#22C55E" if action == "BUY" else "#EF4444" if action == "SELL" else "#94A3B8"
             
             action_ar = "شراء" if action == "BUY" else "بيع" if action == "SELL" else "انتظار"
-            action_display = f"{action_ar} ({action})" if lang_code == 'ar' else action
+            action_display = action_ar if lang_code == 'ar' else action
             
             title = "👑 قرار كبير الاستراتيجيين" if lang_code == "ar" else "👑 Strategist Decision"
             conf_text = "نسبة الثقة" if lang_code == "ar" else "Confidence"
@@ -476,6 +512,76 @@ if True:
             </div>
             """, unsafe_allow_html=True)
             
+            # --- AGENT VOTING LOGIC (SWARM) ---
+            st.markdown(f"### ⚖️ {'نظام تقييم الوكلاء' if lang_code == 'ar' else 'Agent Voting Logic'}")
+            
+            # Mapping agent data to votes
+            mtf_trend = mtf_json.get("h4_trend", "").upper()
+            mtf_vote = "BUY" if "BULL" in mtf_trend else "SELL" if "BEAR" in mtf_trend else "NEUTRAL"
+            
+            sent_str = sent_json.get("overall_sentiment", "").upper()
+            sent_vote = "BUY" if "BULL" in sent_str else "SELL" if "BEAR" in sent_str else "NEUTRAL"
+            
+            risk_status = risk_json.get("status", "")
+            risk_vote = action if risk_status == "APPROVED" else "NEUTRAL"
+            
+            vol_score = vol_json.get("liquidity_score", 5)
+            vol_vote = action if vol_score >= 6 else "NEUTRAL"
+            
+            pat_conf = pat_json.get("pattern_confidence", 0)
+            pat_vote = action if pat_conf >= 60 else "NEUTRAL"
+
+            agents_data = {
+                "وكيل الاتجاه" if lang_code == 'ar' else "MTF Agent": {"weight": 1.5, "decision": mtf_vote, "reason": mtf_json.get("daily_trend", "")},
+                "وكيل السيولة" if lang_code == 'ar' else "Volume Agent": {"weight": 1.5, "decision": vol_vote, "reason": f"السيولة: {vol_score}/10" if lang_code == 'ar' else f"Liquidity: {vol_score}/10"},
+                "وكيل النماذج" if lang_code == 'ar' else "Pattern Agent": {"weight": 1.0, "decision": pat_vote, "reason": ", ".join(pat_json.get("detected_patterns", []))},
+                "وكيل الأخبار" if lang_code == 'ar' else "Sentiment Agent": {"weight": 1.5, "decision": sent_vote, "reason": sent_json.get("breaking_news_alert", "None")},
+                "وكيل المخاطر" if lang_code == 'ar' else "Risk Agent": {"weight": 3.0, "decision": risk_vote, "reason": risk_json.get("reason", "")}
+            }
+
+            buy_score = 0
+            sell_score = 0
+            total_weight = sum([data["weight"] for data in agents_data.values()])
+            
+            delay = 0.4 if st.session_state.get("animate_swarm", False) else 0.0
+
+            with st.expander("🔍 تفاصيل نقاش الوكلاء" if lang_code == 'ar' else "🔍 Agents Discussion", expanded=True):
+                placeholders = []
+                for _ in range(len(agents_data)):
+                    placeholders.append(st.empty())
+                
+                for i, (agent_name, data) in enumerate(agents_data.items()):
+                    if delay > 0:
+                        time.sleep(delay)
+                    
+                    dec = data["decision"]
+                    w = data["weight"]
+                    res = data["reason"]
+                    
+                    if dec == "BUY":
+                        buy_score += w
+                        placeholders[i].success(f"**{agent_name} (وزن {w}):** شراء 🟢 - {res}" if lang_code == 'ar' else f"**{agent_name} (Weight {w}):** BUY 🟢 - {res}")
+                    elif dec == "SELL":
+                        sell_score += w
+                        placeholders[i].error(f"**{agent_name} (وزن {w}):** بيع 🔴 - {res}" if lang_code == 'ar' else f"**{agent_name} (Weight {w}):** SELL 🔴 - {res}")
+                    else:
+                        placeholders[i].info(f"**{agent_name} (وزن {w}):** محايد ⚪ - {res}" if lang_code == 'ar' else f"**{agent_name} (Weight {w}):** NEUTRAL ⚪ - {res}")
+
+            st.session_state.animate_swarm = False # reset animation
+
+            buy_percentage = (buy_score / total_weight) * 100
+            sell_percentage = (sell_score / total_weight) * 100
+
+            st.markdown("---")
+            st.markdown(f"### 👑 {'قرار الوكيل القاضي' if lang_code == 'ar' else 'The Judge Decision'}")
+            
+            if buy_percentage > sell_percentage:
+                st.write(f"{'نسبة تأكيد الشراء:' if lang_code == 'ar' else 'Buy Confirmation:'} {buy_percentage:.1f}%")
+                st.progress(min(int(buy_percentage)/100.0, 1.0))
+            else:
+                st.write(f"{'نسبة تأكيد البيع:' if lang_code == 'ar' else 'Sell Confirmation:'} {sell_percentage:.1f}%")
+                st.progress(min(int(sell_percentage)/100.0, 1.0))
+                
             cot = strat_json.get("Chain_of_Thought", "")
             if cot:
                 with st.expander(t.get("cot_title", "Chain of Thought")):
@@ -496,7 +602,10 @@ if True:
                     
                     strength = mtf_json.get('trend_strength', 0)
                     st.markdown(f"**{t.get('trend_strength', 'Trend Strength:')}** {strength}/10")
-                    st.progress(strength / 10.0)
+                    try:
+                        st.progress(min(max(float(strength) / 10.0, 0.0), 1.0))
+                    except:
+                        st.progress(0.0)
 
                     perm = "✅" if mtf_json.get('permission_to_trade') else "❌"
                     st.markdown(f"**{t.get('permission_to_trade', 'Permission:')}** {perm}")
@@ -509,7 +618,10 @@ if True:
                     st.markdown(f"**{t.get('detected_patterns', 'Patterns:')}** {', '.join(pat_json.get('detected_patterns', []))}")
                     conf = pat_json.get('pattern_confidence', 0)
                     st.markdown(f"**{t.get('pattern_confidence', 'Confidence:')}** {conf}%")
-                    st.progress(conf / 100.0)
+                    try:
+                        st.progress(min(max(float(conf) / 100.0, 0.0), 1.0))
+                    except:
+                        st.progress(0.0)
                 else:
                     st.error(t.get("pattern_fail", "Failed"))
 
@@ -521,7 +633,10 @@ if True:
                     
                     liq = vol_json.get('liquidity_score', 0)
                     st.markdown(f"**{t.get('liquidity_score', 'Liquidity Score:')}** {liq}/10")
-                    st.progress(liq / 10.0)
+                    try:
+                        st.progress(min(max(float(liq) / 10.0, 0.0), 1.0))
+                    except:
+                        st.progress(0.0)
 
                     fakeout = f"⚠️ {t.get('yes_word', 'Yes')}" if vol_json.get('fakeout_detected') else t.get('no_word', 'No')
                     st.markdown(f"**{t.get('fakeout_detected', 'Fakeout:')}** {fakeout}")
@@ -535,7 +650,10 @@ if True:
                     
                     sent_score = sent_json.get('sentiment_score', 0)
                     st.markdown(f"**{t.get('sentiment_score', 'Score:')}** {sent_score}/10")
-                    st.progress(sent_score / 10.0)
+                    try:
+                        st.progress(min(max(float(sent_score) / 10.0, 0.0), 1.0))
+                    except:
+                        st.progress(0.0)
                     
                     st.markdown(f"**{t.get('fear_greed', 'Fear/Greed:')}** {sent_json.get('market_fear_greed', 'N/A')}")
                     st.info(f"**{t.get('breaking_news', 'News:')}** {sent_json.get('breaking_news_alert', 'N/A')}")
@@ -569,6 +687,9 @@ if True:
             sl = exec_json.get("sl")
             tp = exec_json.get("tp")
 
+            alert_placeholder.warning(f"🚨 تنبيه استراتيجية: توجد فرصة {action} قوية على {selected_symbol} الآن!")
+            st.toast(f'الذكاء الاصطناعي رصد فرصة {action} على {selected_symbol}', icon='🤖')
+
             st.info(t["ai_recommend"].format(action=action, symbol=selected_symbol, lot=lot, sl=sl, tp=tp))
 
             if st.button(t["sim_btn"], use_container_width=True, type="primary"):
@@ -578,7 +699,19 @@ if True:
                         st.success(f"✅ {msg}")
                         st.balloons()
                     else:
-                        st.error(f"❌ {msg}")
+                        st.warning(f"⚠️ {msg} (MT5 Not Connected)")
+                    
+                    # سجل الصفقة الوهمية في جميع الحالات
+                    execute_mock_trade(selected_symbol, action, "Market", sl, tp, lot)
+
+        # عرض السجل في واجهة التطبيق
+        st.markdown("---")
+        st.subheader("📝 سجل الصفقات الوهمية (Paper Trading Log)")
+        if st.session_state.get('trade_log'):
+            df_log = pd.DataFrame(st.session_state.trade_log)
+            st.dataframe(df_log, use_container_width=True)
+        else:
+            st.info("لا توجد صفقات مسجلة حتى الآن.")
 
         # --- 7. Smart AI Advisor (Chat) ---
         st.markdown("---")
@@ -609,6 +742,82 @@ if True:
                             response_text = chat_with_omni_ai(st.session_state.chat_messages, context, lang_code)
                             st.write(response_text)
                             st.session_state.chat_messages.append({"role": "assistant", "content": response_text})
+
+    # --- 8. Trade History Log ---
+    st.markdown("---")
+    st.markdown(f"<h2 style='text-align: center;'>{'سجل صفقات الذكاء الاصطناعي' if lang_code == 'ar' else 'AI Trade History Log'}</h2>", unsafe_allow_html=True)
+    
+    with st.expander("عرض سجل الصفقات (View Trade Log)" if lang_code == 'ar' else "View Trade Log", expanded=False):
+        col_refresh, col_clear, _ = st.columns([1, 1, 3])
+        with col_refresh:
+            if st.button("تحديث السجل 🔄" if lang_code == 'ar' else "Refresh Log 🔄", use_container_width=True):
+                st.rerun()
+        with col_clear:
+            if st.button("مسح السجل 🗑️" if lang_code == 'ar' else "Clear Log 🗑️", use_container_width=True):
+                st.session_state.trade_log = []
+                st.rerun()
+            
+        if not st.session_state.trade_log:
+            st.info("لا توجد صفقات سابقة في السجل." if lang_code == "ar" else "No past trades found.")
+        else:
+            # Fetch current live prices for real-time PnL calculation
+            unique_symbols = list(set([trade["الأصل"] for trade in st.session_state.trade_log]))
+            live_prices = {}
+            for sym in unique_symbols:
+                try:
+                    df_cur = get_historical_data(sym, '15m')
+                    if df_cur is not None and not df_cur.empty:
+                        live_prices[sym] = float(df_cur['close'].iloc[-1])
+                except Exception:
+                    pass
+            
+            # Update PnL and status
+            for trade in st.session_state.trade_log:
+                if trade["الحالة"] == "مفتوحة 🟢":
+                    sym = trade["الأصل"]
+                    cur_price = live_prices.get(sym)
+                    if cur_price is not None:
+                        entry = trade["الدخول"]
+                        tp = trade["الهدف (TP)"]
+                        sl = trade["وقف الخسارة (SL)"]
+                        lot = trade["الحجم"]
+                        action = trade["النوع"]
+                        
+                        # Calculate PnL (Standard 100 multiplier for generic visualization)
+                        if action == "BUY":
+                            pnl = (cur_price - entry) * lot * 100
+                            if cur_price >= tp:
+                                trade["الحالة"] = "ربح ✅"
+                                trade["الربح/الخسارة الوهمي"] = round((tp - entry) * lot * 100, 2)
+                            elif cur_price <= sl:
+                                trade["الحالة"] = "خسارة ❌"
+                                trade["الربح/الخسارة الوهمي"] = round((sl - entry) * lot * 100, 2)
+                            else:
+                                trade["الربح/الخسارة الوهمي"] = round(pnl, 2)
+                        elif action == "SELL":
+                            pnl = (entry - cur_price) * lot * 100
+                            if cur_price <= tp:
+                                trade["الحالة"] = "ربح ✅"
+                                trade["الربح/الخسارة الوهمي"] = round((entry - tp) * lot * 100, 2)
+                            elif cur_price >= sl:
+                                trade["الحالة"] = "خسارة ❌"
+                                trade["الربح/الخسارة الوهمي"] = round((entry - sl) * lot * 100, 2)
+                            else:
+                                trade["الربح/الخسارة الوهمي"] = round(pnl, 2)
+            
+            # Display as DataFrame
+            df_log = pd.DataFrame(st.session_state.trade_log)
+            # Format numeric columns to avoid precision issues
+            df_log['الدخول'] = df_log['الدخول'].map('{:.2f}'.format)
+            df_log['وقف الخسارة (SL)'] = df_log['وقف الخسارة (SL)'].map('{:.2f}'.format)
+            df_log['الهدف (TP)'] = df_log['الهدف (TP)'].map('{:.2f}'.format)
+            
+            # Style PnL column
+            def color_pnl(val):
+                color = 'green' if float(val) > 0 else 'red' if float(val) < 0 else 'gray'
+                return f'color: {color}; font-weight: bold;'
+                
+            st.dataframe(df_log.style.map(color_pnl, subset=['الربح/الخسارة الوهمي']), use_container_width=True)
 
     # --- 5. Live Mode Rerun Loop ---
     

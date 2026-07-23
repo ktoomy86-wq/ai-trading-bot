@@ -3,6 +3,7 @@ import json
 import logging
 import time
 import requests
+# pyrefly: ignore [missing-import]
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
@@ -23,37 +24,32 @@ def get_omni_system_prompt(symbol, lang="ar", supports=[], resistances=[], chat_
 2. Volume & Liquidity Agent: Reads volume profile to detect Smart Money Concepts, fakeouts, and liquidity sweeps.
 3. Pattern Recognition Agent: Detects classic patterns (Head & Shoulders, Double Tops/Bottoms, Wedges) and harmonic patterns.
 4. Sentiment & Breaking News Agent: Assesses market sentiment and breaking news impact (e.g. from X or major news outlets) on {symbol}.
-5. Risk Agent: Calculates Stop Loss dynamically using Daily ATR * 1.5. Dynamically calculate and adjust the Lot Size so that total risk NEVER exceeds 1% of Account Balance. DO NOT REJECT the trade for exceeding risk; instead, reduce the Lot Size. Sets TP1 (1:1), TP2 (1:2), TP3 (1:3). Only reject if the required lot size is less than 0.01.
-6. Execution Agent: Formats the final trade order for programmatic execution. CRITICAL: Ensure `tp` and `sl` are logically placed based on the Action. For BUY, TP MUST be greater than Entry, and SL MUST be less than Entry. For SELL, TP MUST be less than Entry, and SL MUST be greater than Entry.
-7. Chief Strategist: Synthesizes everything into a final Action (BUY/SELL/HOLD).
+5. Chief Strategist: Synthesizes everything into a final Action (BUY/SELL/HOLD). This determines the direction of the trade!
+6. Risk Agent: Calculates Stop Loss dynamically using Daily ATR * 1.5 based on the Chief Strategist's Action. Calculate Lot Size so risk = 1% of Account Balance. CRITICAL MANDATORY RULE: YOU MUST ALWAYS SET "status": "APPROVED". Sets TP1 (1:1), TP2 (1:2), TP3 (1:3).
+7. Execution Agent: Formats the final trade order.
 
-Here is the algorithmic analysis of support and resistance on the chart for {symbol}:
-- Supports: {supports}
-- Resistances: {resistances}
-Incorporate these levels when deciding stop loss, take profit, and smart money zones.
+CRITICAL ALIGNMENT RULE: ALL AGENTS (Risk, Execution, and Strategist) MUST STRICTLY AGREE ON THE SAME DIRECTION (BUY or SELL).
+- IF THE OVERALL DECISION IS **BUY**: execution_agent.action MUST be BUY, strategist_agent.Action MUST be BUY. Risk and Execution TP values MUST be HIGHER than Entry Price. SL MUST be LOWER than Entry Price.
+- IF THE OVERALL DECISION IS **SELL**: execution_agent.action MUST be SELL, strategist_agent.Action MUST be SELL. Risk and Execution TP values MUST be LOWER than Entry Price. SL MUST be HIGHER than Entry Price.
+Any mathematical contradiction (e.g. Action is SELL but TP is higher than Entry) is strictly forbidden.
 
-User's Custom Instructions & Capital (from Chat History):
-{chat_context}
-(Use this to strictly adjust the Account Balance and strategy if the user requested it).
+CRITICAL TRANSLATION RULE: You MUST translate all textual values inside the JSON (such as reasons, chain of thought, summaries, pattern names, sentiments) into the '{lang_instruction}'. The JSON keys must remain in English, but the VALUES must be strictly in {lang_instruction}.
 
-You must output a SINGLE JSON object containing all 7 reports precisely in this format.
-IMPORTANT: All string values, explanations, summaries, and reasons inside the JSON MUST be written in the {lang_instruction}.
-If the language is Arabic, translate terms like BULLISH to "صاعد", BEARISH to "هابط", NEUTRAL to "عرضي", APPROVED to "مقبول", REJECTED to "مرفوض", and translate pattern names like "Double Top" to "قمة مزدوجة".
-
+You MUST output ONLY a valid JSON object in this exact structure, with NO extra text or markdown:
 {{
   "mtf_agent": {{
-    "daily_trend": "BULLISH / BEARISH / NEUTRAL (Translated to {lang_instruction})",
-    "h4_trend": "BULLISH / BEARISH / NEUTRAL (Translated)",
+    "daily_trend": "BULLISH / BEARISH / CONSOLIDATING",
+    "h4_trend": "BULLISH / BEARISH / CONSOLIDATING",
     "trend_strength": 8,
     "permission_to_trade": true
   }},
-  "volume_liquidity_agent": {{
+  "volume_agent": {{
+    "smart_money_zones": [4000.50, 4100.00],
     "liquidity_score": 7,
-    "smart_money_zones": ["Price level 1", "Price level 2"],
     "fakeout_detected": false
   }},
-  "pattern_recognition_agent": {{
-    "detected_patterns": ["Pattern Name (Translated)"],
+  "pattern_agent": {{
+    "detected_patterns": ["Double Bottom", "Bull Flag"],
     "pattern_confidence": 85
   }},
   "sentiment_agent": {{
@@ -62,8 +58,14 @@ If the language is Arabic, translate terms like BULLISH to "صاعد", BEARISH t
     "breaking_news_alert": "None / Alert details...",
     "market_fear_greed": 65
   }},
+  "strategist_agent": {{
+    "Action": "BUY / SELL / HOLD",
+    "Confidence_Score": 85,
+    "Chain_of_Thought": "...",
+    "Execution_Summary": "..."
+  }},
   "risk_agent": {{
-    "status": "APPROVED / REJECTED",
+    "status": "APPROVED",
     "reason": "...",
     "sl_price": 0.0,
     "tp1": 0.0,
@@ -71,26 +73,20 @@ If the language is Arabic, translate terms like BULLISH to "صاعد", BEARISH t
     "tp3": 0.0
   }},
   "execution_agent": {{
-    "action": "BUY / SELL / HOLD",
+    "action": "BUY / SELL / HOLD (Must strictly match strategist_agent.Action)",
     "symbol": "{symbol}",
     "lot_size": 0.0,
     "entry_price": 0.0,
     "sl": 0.0,
     "tp": 0.0
-  }},
-  "strategist_agent": {{
-    "Action": "BUY / SELL / HOLD",
-    "Confidence_Score": 85,
-    "Chain_of_Thought": "...",
-    "Execution_Summary": "..."
   }}
 }}
 """
 
 def chat_with_omni_ai(messages, context, lang="ar"):
-    api_key = os.getenv("GITHUB_TOKEN")
+    api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        return "⚠️ رمز GitHub (GITHUB_TOKEN) غير موجود. يرجى إضافته في القائمة الجانبية للدردشة مع المستشار." if lang == "ar" else "⚠️ GitHub Token is missing."
+        return "⚠️ رمز Groq (GROQ_API_KEY) غير موجود. يرجى إضافته." if lang == "ar" else "⚠️ Groq Token is missing."
 
     system_persona = f"""You are the 'OmniTrade AI Smart Advisor' (المستشار الذكي), an elite trading strategist and market analyst. You are a genius trader with deep market knowledge. 
 Your goal is to answer the user's questions about the market, trading strategies, or the AI's recent decisions.
@@ -105,14 +101,14 @@ CRITICAL RULE: DO NOT use LaTeX math formatting (like \\frac or \\text) or brack
     for msg in messages[-10:]: # keep last 10 messages for context
         formatted_messages.append({"role": msg["role"], "content": msg["content"]})
 
-    url = "https://models.inference.ai.azure.com/chat/completions"
+    url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
     
     payload = {
-        "model": "gpt-4o", # use gpt-4o for smart chat
+        "model": "llama-3.1-8b-instant", # use fast/high-limit model for chat
         "messages": formatted_messages,
         "temperature": 0.7
     }
@@ -127,13 +123,9 @@ CRITICAL RULE: DO NOT use LaTeX math formatting (like \\frac or \\text) or brack
         return f"حدث خطأ: {str(e)}" if lang == "ar" else f"Error: {str(e)}"
 
 def get_omni_analysis(symbol: str, h4_data: str, h1_data: str, tech_summary: str, macro_data: str, balance: float, atr: float, lang="ar", supports=[], resistances=[], chat_context=""): 
-    """
-    Sends all data in one payload to get the entire ecosystem analysis instantly using GitHub Models.
-    """
-    api_key = os.getenv("GITHUB_TOKEN")
+    api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        logger.error("GITHUB_TOKEN is not set.")
-        err = "لم تقم بإدخال رمز GitHub (GITHUB_TOKEN) في القائمة الجانبية." if lang == "ar" else "GitHub Token is missing from the sidebar."
+        err = "لم تقم بإدخال مفتاح Groq API في ملف .env." if lang == "ar" else "Groq API Key is missing from .env."
         return None, err
         
     user_prompt = f"""
@@ -159,26 +151,26 @@ Provide your analysis in the strict unified JSON format requested.
 """
     max_retries = 3
     base_delay = 5
-    url = "https://models.inference.ai.azure.com/chat/completions"
+    url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
     }
+    model = "llama-3.1-8b-instant"
     
-    # Using gpt-4o-mini via GitHub Models (Free and fast for JSON output)
     payload = {
-        "model": "gpt-4o-mini",
+        "model": model,
         "messages": [
             {"role": "system", "content": get_omni_system_prompt(symbol, lang, supports, resistances, chat_context)},
             {"role": "user", "content": user_prompt}
         ],
         "temperature": 0.2
     }
-    
+        
     for attempt in range(max_retries):
         try:
-            logger.info(f"Sending Omni-Data to GitHub Models API for {symbol}...")
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            logger.info(f"Sending Omni-Data to Groq for {symbol}...")
+            response = requests.post(url, headers=headers, json=payload, timeout=60)
             
             if response.status_code == 429:
                 logger.warning(f"Rate limit hit. Retrying in {base_delay}s...")
@@ -187,13 +179,14 @@ Provide your analysis in the strict unified JSON format requested.
                 continue
                 
             response.raise_for_status()
-            
             response_data = response.json()
+            
             model_text = response_data['choices'][0]['message']['content']
+                
             return json.loads(clean_json(model_text)), None
             
         except requests.exceptions.RequestException as e:
-            err_msg = f"Network error calling GitHub Models API: {e}"
+            err_msg = f"Network error calling Groq API: {e}"
             if hasattr(e, 'response') and e.response is not None:
                 err_msg += f"\nResponse: {e.response.text}"
             logger.error(err_msg)
@@ -201,9 +194,9 @@ Provide your analysis in the strict unified JSON format requested.
                 return None, err_msg
             time.sleep(base_delay)
         except (json.JSONDecodeError, KeyError) as e:
-            text_val = locals().get('model_text', 'Not available (KeyError before assignment)')
+            text_val = locals().get('model_text', 'Not available')
             err_msg = f"Error parsing model response: {e}\nResponse text: {text_val}"
             logger.error(err_msg)
             return None, err_msg
             
-    return None, "Unknown Error"
+    return None, f"تم تجاوز الحد الأقصى للمحاولات (Rate Limit). يرجى الانتظار دقيقة والمحاولة مرة أخرى. آخر حالة: {getattr(locals().get('response'), 'status_code', 'Unknown')}" if lang == "ar" else f"Rate limit exceeded. Please wait a minute and try again. Last status: {getattr(locals().get('response'), 'status_code', 'Unknown')}"
